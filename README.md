@@ -4,6 +4,8 @@ C++ offline mnemonic tool with embedded wordlist and SHA256.
 
 This is a tool to generate the Bitcoin standard 12-word seed phrase (BIP-39). Compatible with various other crypto wallets such as Ethereum, Binance, Solana, Litecoin, Tron, and others. And most importantly, everything runs offline
 
+---
+
 ## How to use
 
 follow this command in termux:
