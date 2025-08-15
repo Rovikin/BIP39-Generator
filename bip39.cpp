@@ -5,14 +5,12 @@
 #include <sstream>
 #include <iomanip>
 #include <cstring>
-#include "sha256.h" // SHA256 implementation (pure C++) dari sha256.cpp
+#include "sha256.h" 
 
-// Embed wordlist langsung dari seed.cpp
 const std::vector<std::string> wordlist = {
 #include "seed.cpp"
 };
 
-// Generate 128-bit entropy (default)
 std::vector<uint8_t> generate_entropy(int bits = 128) {
     std::random_device rd;
     std::vector<uint8_t> entropy(bits / 8);
@@ -20,7 +18,6 @@ std::vector<uint8_t> generate_entropy(int bits = 128) {
     return entropy;
 }
 
-// Convert bytes to bit string
 std::string to_bit_string(const std::vector<uint8_t>& bytes) {
     std::string bit_string;
     for (uint8_t byte : bytes) {
@@ -31,7 +28,6 @@ std::string to_bit_string(const std::vector<uint8_t>& bytes) {
     return bit_string;
 }
 
-// Get checksum bits from SHA256(entropy)
 std::string get_checksum_bits(const std::vector<uint8_t>& entropy) {
     std::vector<uint8_t> hash = SHA256::hash(entropy);
     int cs_len = entropy.size() * 8 / 32;
@@ -42,7 +38,6 @@ std::string get_checksum_bits(const std::vector<uint8_t>& entropy) {
     return checksum_bits;
 }
 
-// Convert entropy + checksum => mnemonic words
 std::string entropy_to_mnemonic(const std::vector<uint8_t>& entropy) {
     std::string entropy_bits = to_bit_string(entropy);
     std::string checksum_bits = get_checksum_bits(entropy);
