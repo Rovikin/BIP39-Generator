@@ -8,13 +8,22 @@
 #include "sha256.h" 
 
 const std::vector<std::string> wordlist = {
-#include "seed.cpp"
+#include "wordlist.inc"
 };
 
 std::vector<uint8_t> generate_entropy(int bits = 128) {
-    std::random_device rd;
     std::vector<uint8_t> entropy(bits / 8);
-    for (auto& byte : entropy) byte = static_cast<uint8_t>(rd());
+    FILE* urandom = fopen("/dev/urandom", "rb");
+    if (!urandom) {
+        std::cerr << "Gagal membuka /dev/urandom\n";
+        exit(1);
+    }
+    if (fread(entropy.data(), 1, entropy.size(), urandom) != entropy.size()) {
+        std::cerr << "Gagal membaca entropy\n";
+        fclose(urandom);
+        exit(1);
+    }
+    fclose(urandom);
     return entropy;
 }
 
@@ -58,18 +67,32 @@ std::string entropy_to_mnemonic(const std::vector<uint8_t>& entropy) {
     return oss.str();
 }
 
-int main() {
+int main(int argc, char* argv[]) {
     if (wordlist.size() != 2048) {
-        std::cerr << "❌ Wordlist tidak valid (harus 2048 kata).\n";
+        std::cerr << "Wordlist tidak valid (harus 2048 kata).\n";
         return 1;
     }
 
-    auto entropy = generate_entropy(); // 128-bit
-    std::string mnemonic = entropy_to_mnemonic(entropy);
+    int count = 1;
+    int bits = 128;
+    for (int i = 1; i < argc; ++i) {
+        if (std::string(argv[i]) == "--count" && i + 1 < argc) {
+            count = std::stoi(argv[i + 1]);
+            ++i;
+        } else if (std::string(argv[i]) == "--words" && i + 1 < argc) {
+            int words = std::stoi(argv[i + 1]);
+            if (words == 24) bits = 256;
+            else if (words == 12) bits = 128;
+            else { std::cerr << "--words hanya mendukung 12 atau 24\n"; return 1; }
+            ++i;
+        }
+    }
 
-    std::cout << "\n============================================\n\n";
-    std::cout << mnemonic;
-    std::cout << "\n\n============================================\n";
+    for (int i = 0; i < count; ++i) {
+        auto entropy = generate_entropy(bits);
+        std::string mnemonic = entropy_to_mnemonic(entropy);
+        std::cout << mnemonic << "\n";
+    }
 
     return 0;
 }
