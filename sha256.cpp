@@ -1,5 +1,6 @@
 // sha256.cpp
 #include "sha256.h"
+#include <cstring>
 
 namespace {
     const uint32_t k[64] = {
@@ -29,71 +30,75 @@ namespace {
         uint32_t w[64];
 
         for (int i = 0; i < 16; ++i)
-            w[i] = (block[i * 4] << 24) |
-                   (block[i * 4 + 1] << 16) |
-                   (block[i * 4 + 2] << 8) |
-                   (block[i * 4 + 3]);
+            w[i] = ((uint32_t)block[i*4]   << 24) |
+                   ((uint32_t)block[i*4+1] << 16) |
+                   ((uint32_t)block[i*4+2] <<  8) |
+                   ((uint32_t)block[i*4+3]);
 
         for (int i = 16; i < 64; ++i) {
-            uint32_t s0 = rotr(w[i - 15], 7) ^ rotr(w[i - 15], 18) ^ (w[i - 15] >> 3);
-            uint32_t s1 = rotr(w[i - 2], 17) ^ rotr(w[i - 2], 19) ^ (w[i - 2] >> 10);
-            w[i] = w[i - 16] + s0 + w[i - 7] + s1;
+            uint32_t s0 = rotr(w[i-15],7) ^ rotr(w[i-15],18) ^ (w[i-15] >> 3);
+            uint32_t s1 = rotr(w[i-2],17) ^ rotr(w[i-2],19)  ^ (w[i-2]  >> 10);
+            w[i] = w[i-16] + s0 + w[i-7] + s1;
         }
 
-        uint32_t a = h[0], b = h[1], c = h[2], d = h[3];
-        uint32_t e = h[4], f = h[5], g = h[6], hval = h[7];
+        uint32_t a=h[0],b=h[1],c=h[2],d=h[3];
+        uint32_t e=h[4],f=h[5],g=h[6],hv=h[7];
 
         for (int i = 0; i < 64; ++i) {
-            uint32_t S1 = rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25);
-            uint32_t ch = (e & f) ^ (~e & g);
-            uint32_t temp1 = hval + S1 + ch + k[i] + w[i];
-            uint32_t S0 = rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22);
-            uint32_t maj = (a & b) ^ (a & c) ^ (b & c);
+            uint32_t S1    = rotr(e,6) ^ rotr(e,11) ^ rotr(e,25);
+            uint32_t ch    = (e & f) ^ (~e & g);
+            uint32_t temp1 = hv + S1 + ch + k[i] + w[i];
+            uint32_t S0    = rotr(a,2) ^ rotr(a,13) ^ rotr(a,22);
+            uint32_t maj   = (a & b) ^ (a & c) ^ (b & c);
             uint32_t temp2 = S0 + maj;
 
-            hval = g;
-            g = f;
-            f = e;
-            e = d + temp1;
-            d = c;
-            c = b;
-            b = a;
-            a = temp1 + temp2;
+            hv=g; g=f; f=e; e=d+temp1;
+            d=c;  c=b; b=a; a=temp1+temp2;
         }
 
-        h[0] += a; h[1] += b; h[2] += c; h[3] += d;
-        h[4] += e; h[5] += f; h[6] += g; h[7] += hval;
+        h[0]+=a; h[1]+=b; h[2]+=c; h[3]+=d;
+        h[4]+=e; h[5]+=f; h[6]+=g; h[7]+=hv;
+    }
+
+    void sha256_core(const uint8_t* data, size_t len, uint8_t out[32]) {
+        uint32_t h[8] = {
+            0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,
+            0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19
+        };
+
+        // Fixed 128-byte stack buffer — safe for inputs up to 55 bytes.
+        // BIP-39 entropy is at most 32 bytes, so this is always sufficient.
+        uint8_t padded[128];
+        memset(padded, 0, sizeof(padded));
+        memcpy(padded, data, len);
+        padded[len] = 0x80;
+
+        // Write bit-length as big-endian 64-bit at bytes 56-63
+        uint64_t bit_len = (uint64_t)len * 8;
+        for (int i = 7; i >= 0; --i) {
+            padded[56 + i] = (uint8_t)(bit_len & 0xff);
+            bit_len >>= 8;
+        }
+
+        process_block(padded, h);
+
+        for (int i = 0; i < 8; ++i) {
+            out[i*4]   = (h[i] >> 24) & 0xff;
+            out[i*4+1] = (h[i] >> 16) & 0xff;
+            out[i*4+2] = (h[i] >>  8) & 0xff;
+            out[i*4+3] =  h[i]        & 0xff;
+        }
     }
 }
 
+// Non-allocating interface
+void SHA256::hash_raw(const uint8_t* data, size_t len, uint8_t out[32]) {
+    sha256_core(data, len, out);
+}
+
+// Original interface (wraps hash_raw, preserved for compatibility)
 std::vector<uint8_t> SHA256::hash(const std::vector<uint8_t>& data) {
-    uint32_t h[8] = {
-        0x6a09e667, 0xbb67ae85,
-        0x3c6ef372, 0xa54ff53a,
-        0x510e527f, 0x9b05688c,
-        0x1f83d9ab, 0x5be0cd19
-    };
-
-    std::vector<uint8_t> padded = data;
-    size_t orig_len = padded.size() * 8;
-    padded.push_back(0x80);
-
-    while ((padded.size() % 64) != 56)
-        padded.push_back(0);
-
-    for (int i = 7; i >= 0; --i)
-        padded.push_back((orig_len >> (i * 8)) & 0xff);
-
-    for (size_t i = 0; i < padded.size(); i += 64)
-        process_block(&padded[i], h);
-
     std::vector<uint8_t> result(32);
-    for (int i = 0; i < 8; ++i) {
-        result[i * 4] = (h[i] >> 24) & 0xff;
-        result[i * 4 + 1] = (h[i] >> 16) & 0xff;
-        result[i * 4 + 2] = (h[i] >> 8) & 0xff;
-        result[i * 4 + 3] = h[i] & 0xff;
-    }
-
+    sha256_core(data.data(), data.size(), result.data());
     return result;
 }

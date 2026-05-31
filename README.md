@@ -18,10 +18,19 @@ Generates BIP-39 seed phrases (12 or 24 words) using CSPRNG via `/dev/urandom`. 
 
 ```bash
 pkg update && pkg upgrade -y
-pkg install g++ git
+pkg install g++ git make
 git clone https://github.com/Rovikin/BIP39-Generator.git
 cd BIP39-Generator
-g++ -O3 -o bip39 bip39.cpp sha256.cpp
+make
+```
+
+> **Catatan:** Flag `-O2` digunakan secara sengaja. `-O3` dihindari karena
+> dapat mengeliminasi `volatile` zeroing yang membersihkan material entropi
+> dari stack setelah setiap seed dibangkitkan.
+
+Hapus binary dan object files:
+```bash
+make clean
 ```
 
 ---
