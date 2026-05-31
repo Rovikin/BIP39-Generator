@@ -6,6 +6,14 @@ Generates BIP-39 seed phrases (12 or 24 words) using CSPRNG via `/dev/urandom`. 
 
 ---
 
+## Demo
+
+
+
+![Demo](demo.gif)
+
+---
+
 ## Build
 
 ```bash
