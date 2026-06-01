@@ -1,42 +1,19 @@
 #include <iostream>
 #include <cstring>
 #include <cstdlib>
-#include <fcntl.h>
-#include <unistd.h>
 #include "sha256.h"
+#include "chacha20.h"
 
-// ── Wordlist ─────────────────────────────────────────────────────────────────
+// ── Wordlist ──────────────────────────────────────────────────────────────────
 static const char* const wordlist[] = {
 #include "wordlist.inc"
 };
 static const int WORDLIST_SIZE = 2048;
 
-// ── Entropy source ────────────────────────────────────────────────────────────
-// /dev/urandom fd is opened once at startup and reused for all iterations.
-// Reusing the fd is cryptographically equivalent to reopening it each time:
-// /dev/urandom on Linux >= 3.17 draws from a fully-seeded CSPRNG regardless
-// of how many times it is opened.
-static int urandom_fd = -1;
-
-static void init_entropy() {
-    urandom_fd = open("/dev/urandom", O_RDONLY);
-    if (urandom_fd < 0) {
-        perror("open /dev/urandom");
-        exit(1);
-    }
-}
-
-static void fill_entropy(uint8_t* buf, size_t n) {
-    size_t got = 0;
-    while (got < n) {
-        ssize_t r = read(urandom_fd, buf + got, n - got);
-        if (r <= 0) {
-            perror("read /dev/urandom");
-            exit(1);
-        }
-        got += (size_t)r;
-    }
-}
+// ── Global CSPRNG ─────────────────────────────────────────────────────────────
+// Seeded once from /dev/urandom (32 bytes = 256 bits).
+// All subsequent entropy is derived via ChaCha20 — zero syscall per seed.
+static ChaCha20RNG rng;
 
 // ── BIP-39 mnemonic generation ────────────────────────────────────────────────
 //
@@ -45,8 +22,7 @@ static void fill_entropy(uint8_t* buf, size_t n) {
 // Security:
 //   - entropy_buf and hash_buf are explicitly zeroed after use via a volatile
 //     pointer to prevent the compiler from optimizing away the wipe.
-//   - Output buffer (out) is caller-owned stack memory; caller is responsible
-//     for zeroing if the mnemonic is sensitive.
+//   - ChaCha20RNG::fill() is thread-safe per instance (single-threaded use).
 //
 static void generate_mnemonic(int bits, char* out, size_t out_size) {
     const int entropy_bytes = bits / 8;        // 16 (12-word) or 32 (24-word)
@@ -57,7 +33,8 @@ static void generate_mnemonic(int bits, char* out, size_t out_size) {
     uint8_t entropy_buf[32] = {0};
     uint8_t hash_buf[32]    = {0};
 
-    fill_entropy(entropy_buf, (size_t)entropy_bytes);
+    // Fill entropy from ChaCha20 CSPRNG — no syscall
+    rng.fill(entropy_buf, (size_t)entropy_bytes);
     SHA256::hash_raw(entropy_buf, (size_t)entropy_bytes, hash_buf);
 
     // Extract 11-bit word indices directly from the bit stream without
@@ -120,7 +97,8 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    init_entropy();
+    // Seed CSPRNG once from OS entropy
+    rng.seed_from_os();
 
     // 24 words x ~8 chars + 23 spaces + null = ~216 bytes; 256 gives headroom.
     char mnemonic[256];
